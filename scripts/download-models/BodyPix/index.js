@@ -25,6 +25,7 @@ async function downloadBodyPix(){
     architecture = architecture.toLowerCase();
     let arch = architecture;
     if (architecture === 'mobilenetv1') {
+      vOutputStrides.pop(); // no 32 strides in mobilenetv1
       vOutputStrides.push(8);
       vMultipliers = [1.0, 0.75, 0.50];
       arch = 'mobilenet';
