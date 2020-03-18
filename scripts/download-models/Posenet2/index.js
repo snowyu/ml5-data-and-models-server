@@ -1,111 +1,91 @@
 const DownloaderUtils = require('../utils');
-const fs = require('fs');
 
-// TODO! get models for posenet 2
-// const STORAGEPATH = 'https://storage.googleapis.com/tfjs-models/savedmodel/posenet/mobilenet/quant2/075';
+// https://storage.googleapis.com/tfjs-models/savedmodel/posenet_mobilenet_075_partmap/model.json
+// https://storage.googleapis.com/tfjs-models/savedmodel/posenet_mobilenet_075_partmap/group1-shard1of2
+// https://storage.googleapis.com/tfjs-models/savedmodel/posenet_mobilenet_075_partmap/group1-shard2of2
 
-// mobilenet
-const MOBILENET_STORAGE_PATH = `https://storage.googleapis.com/tfjs-models/savedmodel/posenet/mobilenet`
-// https://storage.googleapis.com/tfjs-models/savedmodel/posenet/mobilenet/quant2/075/model-stride16.json
-// https://storage.googleapis.com/tfjs-models/savedmodel/posenet/mobilenet/quant2/075/group1-shard1of1.bin
-// mobilenet output stride
-// 8, 16, 32
+// const STORAGEPATH = "https://storage.googleapis.com/tfjs-models/savedmodel/posenet_mobilenet_075_partmap"
 
-// `${baseUrl}/quant${quantNumber}/${mobilenetVersion}/model-stride${strideNumber}.json`
+const RESNET50_BASE_URL =
+    'https://storage.googleapis.com/tfjs-models/savedmodel/posenet/resnet50/';
+const MOBILENET_BASE_URL =
+    'https://storage.googleapis.com/tfjs-models/savedmodel/posenet/mobilenet/';
 
-// multiplier for mobilenet
-// 1.01, 1.0, 0.75, or 0.50
+const outputFolder = './models/posenet2';
 
-// Resnet
-const RESNET_STORAGE_PATH = `https://storage.googleapis.com/tfjs-models/savedmodel/posenet/resnet50`
-// https://storage.googleapis.com/tfjs-models/savedmodel/posenet/resnet50/quant2/model-stride16.json
+// const downloaderUtils = new DownloaderUtils(STORAGEPATH, outputFolder);
 
-// `${baseUrl}/quant${quantNumber}/model-stride${strideNumber}.json
-// Resnet output stride
-// 16, 32
+async function downloadPosenet(){
+  const BASE_URL =
+  'https://storage.googleapis.com/tfjs-models/savedmodel/posenet';
 
+  ['MobileNetV1', 'ResNet50'].forEach(architecture => {
+    const vOutputStrides = [16, 32];
+    let vMultipliers;
+    architecture = architecture.toLowerCase();
+    let arch = architecture;
+    if (architecture === 'mobilenetv1') {
+      vOutputStrides.pop(); // no 32 strides in mobilenetv1
+      vOutputStrides.push(8);
+      vMultipliers = [1.0, 0.75, 0.50];
+      arch = 'mobilenet';
+    }
+    vOutputStrides.forEach(outputStride => {
+      const vQuantBytes = [1,2,4];
+      vQuantBytes.forEach(async quantBytes => {
+        if (vMultipliers) {
+          vMultipliers.forEach(async multiplier => {
+            const vFilePath = toLocalFolder({architecture, outputStride, multiplier, quantBytes});
+            const url = `${BASE_URL}/${arch}/${vFilePath}`
+            const downloaderUtils = new DownloaderUtils(url, `${outputFolder}/${architecture}/${vFilePath}`);
+            downloaderUtils.makeOutputPath();
+            try {
+              const modelJson = await downloaderUtils.saveJson(`model-stride${outputStride}.json`);
+              await downloaderUtils.saveWeights(modelJson);
+            } catch(err) {
+              console.log('Faild download: '+ url, err)
+            }
+          })
+        } else {
+          const vFilePath = toLocalFolder({architecture, outputStride, quantBytes});
+          const url = `${BASE_URL}/${arch}/${vFilePath}`;
+          const downloaderUtils = new DownloaderUtils(url, `${outputFolder}/${architecture}/${vFilePath}`);
+          downloaderUtils.makeOutputPath();
+          try {
+            const modelJson = await downloaderUtils.saveJson(`model-stride${outputStride}.json`);
+            await downloaderUtils.saveWeights(modelJson);
+          } catch(err) {
+            console.log('Faild download: '+ url, err)
+          }
+      }
 
-async function downloadPosenet() {
-    // mobilenet
-    // quant 1
-    getPosenetByVersion(`${MOBILENET_STORAGE_PATH}/quant${1}/050`, `MOBILENETV1_050_quant1_stride8`, `model-stride8.json`);
-    getPosenetByVersion(`${MOBILENET_STORAGE_PATH}/quant${1}/050`, `MOBILENETV1_050_quant1_stride16`, `model-stride16.json`);
-
-    getPosenetByVersion(`${MOBILENET_STORAGE_PATH}/quant${1}/075`, `MOBILENETV1_075_quant1_stride8`, `model-stride8.json`);
-    getPosenetByVersion(`${MOBILENET_STORAGE_PATH}/quant${1}/075`, `MOBILENETV1_075_quant1_stride16`, `model-stride16.json`);
-
-    getPosenetByVersion(`${MOBILENET_STORAGE_PATH}/quant${1}/100`, `MOBILENETV1_100_quant1_stride8`, `model-stride8.json`);
-    getPosenetByVersion(`${MOBILENET_STORAGE_PATH}/quant${1}/100`, `MOBILENETV1_100_quant1_stride16`, `model-stride16.json`);
-
-    // // quant 2
-    getPosenetByVersion(`${MOBILENET_STORAGE_PATH}/quant${2}/050`, `MOBILENETV1_050_quant2_stride8`, `model-stride8.json`);
-    getPosenetByVersion(`${MOBILENET_STORAGE_PATH}/quant${2}/050`, `MOBILENETV1_050_quant2_stride16`, `model-stride16.json`);
-
-    getPosenetByVersion(`${MOBILENET_STORAGE_PATH}/quant${2}/075`, `MOBILENETV1_075_quant2_stride8`, `model-stride8.json`);
-    getPosenetByVersion(`${MOBILENET_STORAGE_PATH}/quant${2}/075`, `MOBILENETV1_075_quant2_stride16`, `model-stride16.json`);
-
-    getPosenetByVersion(`${MOBILENET_STORAGE_PATH}/quant${2}/100`, `MOBILENETV1_100_quant2_stride8`, `model-stride8.json`);
-    getPosenetByVersion(`${MOBILENET_STORAGE_PATH}/quant${2}/100`, `MOBILENETV1_100_quant2_stride16`, `model-stride16.json`);
-
-
-    // TODO: not working v101 and quant4
-    // getPosenetByVersion(`${MOBILENET_STORAGE_PATH}/quant${1}/101`, `MOBILENETV1_101_quant1_stride8`, `model-stride8.json`);
-    // getPosenetByVersion(`${MOBILENET_STORAGE_PATH}/quant${1}/101`, `MOBILENETV1_101_quant1_stride16`, `model-stride16.json`);
-    // getPosenetByVersion(`${MOBILENET_STORAGE_PATH}/quant${1}/101`, `MOBILENETV1_101_quant1_stride32`, `model-stride32.json`);
-
-
-    // resnet50
-    getPosenetByVersion(`${RESNET_STORAGE_PATH}/quant${1}`, `RESENET50_quant1_stride16`, `model-stride16.json`);
-    getPosenetByVersion(`${RESNET_STORAGE_PATH}/quant${2}`, `RESENET50_quant2_stride16`, `model-stride16.json`);
-    
-    getPosenetByVersion(`${RESNET_STORAGE_PATH}/quant${1}`, `RESENET50_quant1_stride32`, `model-stride32.json`);
-    getPosenetByVersion(`${RESNET_STORAGE_PATH}/quant${2}`, `RESENET50_quant2_stride32`, `model-stride32.json`);
-    // TODO: quant4 currently not working
-    // getPosenetByVersion(`${RESNET_STORAGE_PATH}/quant${4}`, `RESENET50_quant4_stride32`, `model-stride32.json`);
-
-    // TODO: quant4 currently not working
-    // getPosenetByVersion(`${RESNET_STORAGE_PATH}/quant${4}`, `RESENET50_quant4_stride16`, `model-stride16.json`);
-}
-
-async function getPosenetByVersion(STORAGEPATH, OUTPUTDIR, FNAME) {
-    const storagePath = `${STORAGEPATH}`
-    const outputPath = `./models/posenet2/${OUTPUTDIR}`
-
-    const posenetDownloader = new DownloaderUtils(storagePath, outputPath);
-
-    posenetDownloader.makeOutputPath();
-
-    const posenetManifest = await posenetDownloader.saveJson(FNAME);
-    console.log(posenetManifest)
-
-    await getWeights(storagePath, outputPath, posenetManifest);
-
-
-}
-
-async function getWeights(storagePath, outputPath, manifest) {
-    // const keys = Object.keys(manifest);
-
-    // console.log(keys)
-    // console.log(keys);
-    const weightsPromiseArray = manifest.weightsManifest[0].paths.map(async (prop) => {
-        const fileName = prop;
-        let weightFile;
-
-        const weightUrl = `${storagePath}/${fileName}`;
-
-        weightFile = await fetch(weightUrl);
-        weightFile = await weightFile.buffer();
-
-        fs.writeFile(`${outputPath}/${fileName}`, weightFile, () => {
-            console.log(`finished writing: ${fileName}`)
-        });
-
+      })
     })
+  })
+    // NOTE: paths are relative to where the script is being called
+    // downloaderUtils.makeOutputPath();
 
-    Promise.all(weightsPromiseArray)
+    // const modelJson = await downloaderUtils.saveJson('model.json');
+    // await downloaderUtils.saveWeights(modelJson);
 }
 
-
+function toLocalFolder({
+  architecture,
+  outputStride,
+  // only by the MobileNetV1 architecture
+  multiplier,
+  quantBytes
+}) {
+  const vQuantName = quantBytes === 4 ? 'float' : `quant${quantBytes}`;
+  let result = '';//`/model-stride${outputStride}.json`;
+  architecture = architecture.toLowerCase();
+  if (architecture === 'resnet50') {
+    result = `${vQuantName}${result}`;
+  } else {
+    const toStr = {1.0: '100', 0.75: '075', 0.50: '050'};
+    result = `${vQuantName}/${toStr[multiplier]}${result}`;
+  }
+  return result;
+}
 
 module.exports = downloadPosenet
